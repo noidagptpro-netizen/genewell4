@@ -1,0 +1,697 @@
+You are building a Python PDF generation system for GeneWell (genewell.in). 
+Your job is to create a production-ready, automated PDF report generator that 
+produces premium personalized wellness blueprints for paying customers.
+
+═══════════════════════════════════════════════════════════════
+CONTEXT & REFERENCE
+═══════════════════════════════════════════════════════════════
+
+We already have a working reference PDF generator script. It produces a 
+premium Navy + Gold themed PDF using reportlab + matplotlib. Study it 
+carefully — replicate its quality and extend it for all products below.
+
+TECH STACK ALREADY CONFIRMED WORKING:
+- reportlab (PDF generation, tables, styles, flowables)
+- matplotlib (charts: bar, line, pie — saved to BytesIO, embedded in PDF)
+- Python 3.10+
+
+COLOR PALETTE (non-negotiable — do not change):
+- NAVY       = #0D1B2A  (backgrounds, headers)
+- NAVY_MID   = #1B2E44  (card backgrounds)
+- NAVY_LIGHT = #243B55  (section cards)
+- GOLD       = #C9A84C  (accents, numbers, highlights)
+- GOLD_LIGHT = #E8C97A  (secondary gold)
+- CREAM      = #F5F0E8  (table rows, body bg)
+- CREAM_DARK = #EAE3D5  (alternate rows)
+- TEAL       = #2E7D91  (secondary accent)
+- RED_ALERT  = #C0392B  (critical flags)
+- GREEN_OK   = #1E7B4B  (good scores)
+- ORANGE     = #D4651A  (warnings)
+- PAGE_BG    = #F7F4EF  (warm page background)
+
+═══════════════════════════════════════════════════════════════
+SYSTEM ARCHITECTURE TO BUILD
+═══════════════════════════════════════════════════════════════
+
+Build this exact folder structure:
+
+genewell_pdf_system/
+├── main.py                  # FastAPI app — receives webhook, triggers PDF
+├── generator/
+│   ├── __init__.py
+│   ├── base.py              # Shared styles, colors, helpers, flowables
+│   ├── brainy.py            # Brainy Blueprint product
+│   ├── product2.py          # Gut Health Report (see below)
+│   ├── product3.py          # Hormone Balance Report (see below)
+│   ├── product4.py          # DNA Insights Report (see below)
+│   └── router.py            # Routes user data to correct generator
+├── utils/
+│   ├── charts.py            # All matplotlib chart functions
+│   ├── calculations.py      # BMI, BMR, TDEE, macro math
+│   └── scoring.py           # Health scoring engine
+├── templates/
+│   └── styles.py            # All ParagraphStyle definitions
+├── output/                  # Generated PDFs saved here
+├── requirements.txt
+└── README.md
+
+═══════════════════════════════════════════════════════════════
+FILE 1: requirements.txt
+═══════════════════════════════════════════════════════════════
+
+reportlab==4.2.0
+matplotlib==3.8.0
+fastapi==0.110.0
+uvicorn==0.27.0
+python-multipart==0.0.9
+pydantic==2.6.0
+boto3==1.34.0
+requests==2.31.0
+
+═══════════════════════════════════════════════════════════════
+FILE 2: utils/calculations.py
+═══════════════════════════════════════════════════════════════
+
+Build a calculations module with these exact functions:
+
+def calculate_bmi(weight_kg: float, height_cm: float) -> float:
+    """Returns BMI rounded to 1 decimal"""
+
+def calculate_bmr(weight_kg, height_cm, age, gender) -> int:
+    """Mifflin-St Jeor. gender = 'male' or 'female'"""
+    # Female: (10×w) + (6.25×h) - (5×age) - 161
+    # Male:   (10×w) + (6.25×h) - (5×age) + 5
+
+def calculate_tdee(bmr: int, activity_level: str) -> int:
+    """
+    activity_level options and multipliers:
+    'sedentary'       → 1.2
+    'lightly-active'  → 1.375
+    'moderately-active' → 1.55
+    'very-active'     → 1.725
+    'shift-work'      → 1.375  (same as lightly active)
+    """
+
+def calculate_calorie_targets(tdee: int, goal: str) -> dict:
+    """
+    goal options:
+    'gain-weight'    → surplus 250–400 kcal
+    'lose-weight'    → deficit 300–500 kcal
+    'maintain'       → tdee ± 50 kcal
+    'lean-muscle'    → surplus 200–300 kcal
+    Returns: {low, high, surplus_deficit, protein_g, carbs_g, fats_g}
+    Macros: Protein=25%, Carbs=50%, Fats=25% of target calories
+    1g protein=4kcal, 1g carb=4kcal, 1g fat=9kcal
+    """
+
+def calculate_water_target(weight_kg: float, activity: str) -> float:
+    """
+    Base: weight × 0.033 litres
+    Add 0.3L if active/shift-work
+    Returns float rounded to 1 decimal
+    """
+
+def calculate_health_scores(user_data: dict) -> dict:
+    """
+    Compute 0–100 scores for each dimension:
+    sleep_score:    (sleep_hours / 8) × 100, capped at 100
+    hydration_score:(water_L / water_target) × 100, capped at 100
+    meal_score:     (meals_per_day / 3) × 100, capped at 100
+    stress_score:   'low'→85, 'moderate'→50, 'high'→25
+    gut_score:      base 80, -20 if constipation, -15 if bloating_frequent
+    skin_score:     base 80, -20 if dry_skin, -10 if low hydration
+    overall_score:  average of all 6 scores
+    Returns dict with all scores + overall + status labels
+    """
+
+def get_score_status(score: int) -> str:
+    """Returns 'CRITICAL' / 'NEEDS WORK' / 'GOOD' / 'EXCELLENT'"""
+
+def get_weight_projection(current_weight, goal, months=3) -> list:
+    """
+    Returns list of (week, projected_weight) tuples
+    Weeks: 0, 4, 8, 10, 12
+    gain-weight: +0.3–0.5kg/month conservative
+    lose-weight: -0.5–1.0kg/month conservative
+    maintain: ±0
+    """
+
+═══════════════════════════════════════════════════════════════
+FILE 3: utils/scoring.py
+═══════════════════════════════════════════════════════════════
+
+def get_limiting_factors(scores: dict, user_data: dict) -> list:
+    """
+    Returns ordered list of limiting factors with:
+    - priority (#1, #2, etc.)
+    - factor name
+    - score
+    - impact description
+    - estimated improvement timeline
+    - specific action
+    Sorts by score ascending (worst first)
+    """
+
+def get_decision_tree_rows(user_data: dict) -> list:
+    """
+    Returns list of [condition, action, reason] rows
+    based on user_data flags. Include rules for:
+    - sleep < 6 hrs
+    - water < 1.5L
+    - meals < 3/day
+    - thyroid condition present
+    - anxiety present
+    - lactose intolerant
+    - constipation present
+    - salty cravings
+    - afternoon energy crash
+    - weight not gaining (week 4 check rule)
+    Each rule must reference the user's actual value in the condition text
+    """
+
+def get_root_cause_chain(user_data: dict) -> list:
+    """
+    Returns ordered list of (cause, color_hex, tag) tuples
+    building the symptom cascade chain specific to user flags.
+    Always starts from the #1 limiting factor.
+    """
+
+═══════════════════════════════════════════════════════════════
+FILE 4: utils/charts.py
+═══════════════════════════════════════════════════════════════
+
+Build these chart functions. All return BytesIO PNG buffers.
+All use PAGE_BG = '#F7F4EF' as figure background.
+All use NAVY = '#0D1B2A' for text/axes.
+All use GOLD = '#C9A84C' as primary data color.
+
+def make_weight_projection_chart(weeks, weights, user_name) -> BytesIO:
+    """Line chart. Gold line, navy dots. Fill under curve (alpha 0.15).
+    Annotate each point with weight value."""
+
+def make_health_score_chart(scores: dict) -> BytesIO:
+    """Horizontal bar chart. 
+    Red if score<50, Orange if 50-69, Green if 70+.
+    Gold dashed vertical line at 50.
+    Show score/100 label after each bar."""
+
+def make_macro_pie_chart(protein_g, carbs_g, fats_g) -> BytesIO:
+    """Pie chart. Gold=Protein, Teal=Carbs, Green=Fats.
+    Show gram labels. White text for percentages."""
+
+def make_calorie_comparison_chart(bmr, tdee, target_low, target_high) -> BytesIO:
+    """Vertical bar chart comparing BMR vs TDEE vs Target.
+    Shows 3 bars with value labels on top."""
+
+def make_monthly_progress_chart(weeks, values, label, unit) -> BytesIO:
+    """Generic progress line chart for any metric over time.
+    Used for sleep hours improvement, water intake improvement, etc."""
+
+═══════════════════════════════════════════════════════════════
+FILE 5: generator/base.py
+═══════════════════════════════════════════════════════════════
+
+Build ALL shared PDF components here. Every product generator 
+imports from this file. Build:
+
+COLORS dict with all hex values listed above.
+
+def make_all_styles() -> dict:
+    """Returns dict of all ParagraphStyle objects:
+    cover_name, cover_sub, h1, h2, h3, body, body_bold,
+    caption, gold_label, big_number, metric_val, metric_lbl,
+    callout, tag_text, footer, toc_line, code"""
+
+def on_page(canvas, doc, user_name, order_id):
+    """Page decorator: navy footer stripe, gold footer text,
+    user name + order on right, page number centered"""
+
+def card_table(data, col_widths, header_bg=NAVY_MID) -> Table:
+    """Standard styled table: navy header, cream/cream-dark alternating rows,
+    light grid, rounded corners, proper padding"""
+
+def metric_row(items, styles) -> Table:
+    """Horizontal row of metric cards. items = [(label, value, unit), ...]
+    Cream background, centered, bordered"""
+
+def gold_box(text, styles, title=None) -> Table:
+    """Gold-bordered callout box. Light yellow background.
+    Optional bold title with ⭐ prefix."""
+
+def navy_box(content_list) -> Table:
+    """Navy background card for important callouts"""
+
+def section_header(text, styles) -> list:
+    """Returns [Paragraph(h1), HRFlowable(gold)] for section starts"""
+
+def condition_tags_table(conditions: list, styles) -> Table:
+    """Renders colored pill-shaped tags in a 3-column grid.
+    Red for critical, Teal for lifestyle, Navy for general"""
+
+def cover_info_table(info_items: list, styles) -> Table:
+    """Renders the cover page info grid (label: value pairs)"""
+
+def root_cause_chain_table(chain_items: list, styles) -> list:
+    """Renders colored stacked chain blocks with arrows"""
+
+═══════════════════════════════════════════════════════════════
+FILE 6: generator/brainy.py  (PRODUCT 1 — BRAINY BLUEPRINT)
+═══════════════════════════════════════════════════════════════
+
+This is the main existing product. Build it using base.py components.
+
+def generate_brainy_pdf(user_data: dict, output_path: str) -> str:
+    """
+    Generates the complete Brainy 90-Day Health Blueprint PDF.
+    
+    user_data schema (all fields from quiz):
+    {
+        name, age, gender, weight_kg, height_cm, location,
+        sleep_hours, water_glasses (convert to L: × 0.25),
+        meals_per_day, wake_up_time, tired_time,
+        stress_level, energy_levels, mood_patterns,
+        skin_concerns, work_schedule, activity_level,
+        hunger_frequency, hydration_habits, supplement_usage,
+        food_intolerances, bloating_frequency, medical_conditions,
+        exercise_preference, cravings, weight_goal,
+        dna_upload_status, eating_out_frequency, language,
+        order_id, generated_date
+    }
+    
+    PAGES TO GENERATE (in order):
+    
+    Page 1 — COVER
+    - GeneWell logo text + PREMIUM badge
+    - User name + "90-Day Health Transformation Blueprint"
+    - Info grid (name, age/gender, location, goal, sleep status, order)
+    - Condition tags (all flagged conditions from user data)
+    
+    Page 2 — HEALTH SCORE DASHBOARD
+    - Overall score (big number) + score bar chart (matplotlib)
+    - Score breakdown table (6 dimensions, score, status, root cause)
+    - Gold callout: limiting factor #1 explanation
+    
+    Page 3 — COMPUTED METABOLIC NUMBERS
+    - Step-by-step BMI, BMR, TDEE, calorie target calculations (shown as formulas)
+    - 4 metric cards (BMI, BMR, TDEE, Goal kcal)
+    - Macro breakdown table
+    - Macro pie chart (matplotlib)
+    - Calorie comparison bar chart (matplotlib)
+    - Adaptive calorie adjustment logic table
+    
+    Page 4 — DECISION ENGINE + ROOT CAUSE
+    - Root cause chain (colored stacked blocks)
+    - Decision tree table (IF condition → THEN action → WHY)
+    - Limiting factor priority stack table
+    
+    Page 5 — WEIGHT PROJECTION
+    - Weight projection line chart (matplotlib)
+    - Week-by-week projection table
+    - Adaptive rule gold callout
+    
+    Page 6 — 7-DAY MEAL PLAN
+    - Full meal plan table (7 days × 3 meals)
+    - Smart swap matrix table
+    - Mumbai eating out guide
+    
+    Page 7 — SLEEP PROTOCOL
+    - Critical priority callout
+    - Hour-by-hour schedule table
+    
+    Page 8 — SUPPLEMENT PLAN
+    - 3-phase supplement table (weeks 1-4, 5-8, 9-12)
+    
+    Page 9 — STRENGTH TRAINING
+    - 4-phase training table
+    - Pre/post workout nutrition table
+    
+    Page 10 — GUT + HYDRATION PROTOCOL
+    - Hour-by-hour hydration schedule table
+    - 4-week gut healing table
+    
+    Page 11 — LAB TESTS
+    - Priority lab tests table with Mumbai prices
+    - Thyrocare tip callout
+    
+    Page 12 — 90-DAY TRACKING DASHBOARD
+    - Tracking metrics table
+    - Weekly/monthly check-in schedule
+    
+    Page 13 — CLOSING PAGE
+    - Dark navy background
+    - Motivational message
+    - 4 stats (90 days, 9 conditions, 20 data points, 100%)
+    
+    Returns output_path on success
+    """
+
+═══════════════════════════════════════════════════════════════
+FILE 7: generator/product2.py  (GUT HEALTH DEEP DIVE REPORT)
+═══════════════════════════════════════════════════════════════
+
+def generate_gut_health_pdf(user_data: dict, output_path: str) -> str:
+    """
+    Product: GeneWell Gut Health Deep Dive
+    Target users: Those with constipation / bloating / IBS flags
+    
+    PAGES TO GENERATE:
+    
+    Page 1 — COVER (same structure, different subtitle: "Gut Health Deep Dive")
+    
+    Page 2 — GUT HEALTH SCORE
+    - Gut-specific score computed from: constipation flag, bloating frequency,
+      hydration level, fibre intake estimate, probiotic use, stress level
+    - Score bar chart
+    - Gut score breakdown table
+    
+    Page 3 — YOUR GUT HEALTH STORY (computed)
+    - Gut-brain axis explanation specific to user's anxiety + constipation flags
+    - Root cause chain: dehydration → slow motility → constipation → bloating
+    - Gut microbiome status estimate from user data
+    
+    Page 4 — 8-WEEK GUT HEALING PROTOCOL
+    Weeks 1-2: Remove & Repair table
+    Weeks 3-4: Repopulate table
+    Weeks 5-6: Rebalance table
+    Weeks 7-8: Maintain table
+    
+    Page 5 — PROBIOTIC + PREBIOTIC FOOD GUIDE
+    - Probiotic foods table (food, CFU estimate, when to eat, brands India)
+    - Prebiotic foods table (food, fibre content, gut benefit)
+    
+    Page 6 — HYDRATION-GUT CONNECTION
+    - Computed water target (from user weight)
+    - Hour-by-hour hydration schedule
+    - Foods with highest water content table
+    
+    Page 7 — SUPPLEMENT PROTOCOL (Gut-focused)
+    - Probiotics, digestive enzymes, Isabgol, Magnesium, Zinc
+    - Indian brands + prices + timing
+    
+    Page 8 — GUT-FRIENDLY 7-DAY MEAL PLAN
+    - High-fibre, lactose-free if flagged
+    - Fermented foods included daily
+    
+    Page 9 — LAB TESTS (Gut-specific)
+    - Stool culture, H.pylori, SIBO breath test, food intolerance panel
+    
+    Page 10 — TRACKING DASHBOARD (Gut metrics)
+    - Bowel movement frequency, bloating score, energy levels
+    
+    Returns output_path on success
+    """
+
+═══════════════════════════════════════════════════════════════
+FILE 8: generator/product3.py  (HORMONE BALANCE REPORT)
+═══════════════════════════════════════════════════════════════
+
+def generate_hormone_report_pdf(user_data: dict, output_path: str) -> str:
+    """
+    Product: GeneWell Women's Hormone Balance Report
+    Target users: Female, anxiety/mood flags, irregular cycle hints, shift work
+    
+    PAGES TO GENERATE:
+    
+    Page 1 — COVER ("Women's Hormone Balance Report")
+    
+    Page 2 — HORMONE HEALTH SCORE
+    - Computed from: sleep hours, stress level, mood patterns, activity level,
+      work schedule (shift work penalises), supplement usage
+    - Score breakdown: Cortisol Balance, Thyroid (if flagged), Estrogen Rhythm,
+      Progesterone Support, Insulin Sensitivity
+    
+    Page 3 — YOUR HORMONE STORY
+    - Cortisol cascade: shift work → sleep disruption → cortisol elevation
+    - How cortisol affects each hormone specifically
+    - User-specific flags shown as decision tree
+    
+    Page 4 — CYCLE-SYNCED WELLNESS PROTOCOL
+    Phase 1 Menstrual (Days 1-5): nutrition, training, supplements table
+    Phase 2 Follicular (Days 6-13): peak performance actions table
+    Phase 3 Ovulatory (Days 14-16): nutrition, strength focus table
+    Phase 4 Luteal (Days 17-28): PMS management, extra calorie note table
+    
+    Page 5 — HORMONE-BALANCING NUTRITION PLAN
+    - Key nutrients for each hormone: Magnesium, B6, Zinc, Omega-3, Vitamin D
+    - Foods to eat vs avoid table (computed from user flags)
+    - 5-day sample meal plan
+    
+    Page 6 — CORTISOL MANAGEMENT PROTOCOL
+    - Morning routine table (specific to shift work schedule)
+    - Breathwork schedule
+    - Ashwagandha protocol (with clinical reference)
+    - Stress reduction techniques table
+    
+    Page 7 — SUPPLEMENT STACK (Hormone-focused)
+    - Magnesium + B6 + B12 + Omega-3 + Vitamin D3 + Ashwagandha + Probiotics
+    - Cycled dosing by menstrual phase
+    - Indian brands + prices
+    
+    Page 8 — LAB TESTS (Hormone panel)
+    - Estrogen, Progesterone, Testosterone, Cortisol (AM/PM), TSH, T3, T4,
+      DHEA-S, Insulin, AMH
+    - Mumbai lab prices, timing in cycle for each test
+    
+    Page 9 — TRACKING DASHBOARD
+    - Mood score daily, energy by cycle phase, sleep quality, anxiety frequency
+    - Month-by-month expected improvements
+    
+    Returns output_path on success
+    """
+
+═══════════════════════════════════════════════════════════════
+FILE 9: generator/product4.py  (DNA INSIGHTS REPORT)
+═══════════════════════════════════════════════════════════════
+
+def generate_dna_insights_pdf(user_data: dict, dna_data: dict, output_path: str) -> str:
+    """
+    Product: GeneWell DNA Insights Report
+    Triggered when user uploads DNA file to genewell.in
+    
+    dna_data schema:
+    {
+        mthfr_variant: 'normal' | 'heterozygous' | 'homozygous',
+        cyp1a2_variant: 'fast' | 'slow',
+        actn3_variant: 'RR' | 'RX' | 'XX',
+        apoe_variant: 'e2' | 'e3' | 'e4',
+        vdr_variant: 'normal' | 'variant',
+        raw_rsids: dict  (optional, for advanced users)
+    }
+    
+    PAGES TO GENERATE:
+    
+    Page 1 — COVER ("DNA Insights Report — Unlocked")
+    
+    Page 2 — DNA SUMMARY DASHBOARD
+    - Table showing each gene, variant found, what it means for them
+    - Risk/advantage indicators (not medical diagnosis — educational only)
+    
+    Page 3 — MTHFR (Folate Metabolism)
+    - What variant they have
+    - Impact on their specific conditions (anxiety, fatigue)
+    - Dietary adjustments: methylfolate vs folic acid
+    - Foods: spinach, methi, chickpeas, beetroot
+    - Supplement adjustment: use methylfolate form
+    
+    Page 4 — CYP1A2 (Caffeine Metabolism)
+    - Fast vs slow metabolizer result
+    - CRITICAL connection to their sleep (if slow: 1 coffee past noon = 5-6hr issue)
+    - Exact caffeine cutoff time computed from their variant
+    - Tea vs coffee recommendations
+    
+    Page 5 — ACTN3 (Muscle Fiber Type)
+    - RR = power dominant → strength training optimal (confirm existing plan)
+    - XX = endurance → add more cardio components
+    - RX = balanced → current plan is fine
+    - Adjust strength training plan based on result
+    
+    Page 6 — APOE (Cardiovascular + Brain Health)
+    - e4 carriers: reduce saturated fat, prioritize omega-3
+    - e2/e3: standard plan
+    - Dietary adjustments table
+    
+    Page 7 — VDR (Vitamin D Receptor)
+    - Variant = may need higher D3 supplementation
+    - Adjust D3 dose recommendation from standard 2000 IU to 4000 IU if variant
+    
+    Page 8 — UPDATED RECOMMENDATIONS (DNA-adjusted)
+    - Table comparing: Original Plan → DNA-Adjusted Plan
+    - Shows specific changes triggered by DNA findings
+    
+    Page 9 — HOW TO READ YOUR DNA DATA
+    - Educational explainer on SNPs, variants, risk vs destiny
+    - Disclaimer section
+    
+    Returns output_path on success
+    """
+
+═══════════════════════════════════════════════════════════════
+FILE 10: generator/router.py
+═══════════════════════════════════════════════════════════════
+
+from generator.brainy import generate_brainy_pdf
+from generator.product2 import generate_gut_health_pdf
+from generator.product3 import generate_hormone_report_pdf
+from generator.product4 import generate_dna_insights_pdf
+
+PRODUCT_MAP = {
+    'brainy-blueprint':     generate_brainy_pdf,
+    'gut-health-report':    generate_gut_health_pdf,
+    'hormone-report':       generate_hormone_report_pdf,
+    'dna-insights':         generate_dna_insights_pdf,
+}
+
+def route_and_generate(user_data: dict, product_id: str, output_dir: str) -> str:
+    """
+    Routes user_data to the correct generator based on product_id.
+    Constructs output_path as: output_dir/product_id_orderId_name.pdf
+    Returns output_path on success.
+    Raises ValueError if product_id not found.
+    """
+
+═══════════════════════════════════════════════════════════════
+FILE 11: main.py  (FastAPI WEBHOOK ENDPOINT)
+═══════════════════════════════════════════════════════════════
+
+Build a FastAPI app with these endpoints:
+
+POST /generate-pdf
+    Body: {
+        product_id: str,
+        user_data: dict,
+        dna_data: dict (optional, only for dna-insights),
+        webhook_url: str (optional — POST the PDF URL back here when done),
+        s3_bucket: str (optional — upload to S3 if provided)
+    }
+    
+    Flow:
+    1. Validate product_id exists in PRODUCT_MAP
+    2. Validate required user_data fields present
+    3. Call router.route_and_generate()
+    4. If s3_bucket provided: upload PDF to S3, return S3 URL
+    5. If webhook_url provided: POST {status, pdf_url, order_id} to webhook
+    6. Return {success: true, pdf_path: str, order_id: str}
+
+POST /generate-pdf/batch
+    Body: { orders: [ {product_id, user_data, ...}, ... ] }
+    Generates multiple PDFs, returns list of results
+
+GET /health
+    Returns {status: "ok", products: list of product_ids}
+
+GET /download/{order_id}
+    Serves the generated PDF file directly for download
+
+Include proper error handling, logging, and response models.
+
+═══════════════════════════════════════════════════════════════
+QUALITY REQUIREMENTS (non-negotiable)
+═══════════════════════════════════════════════════════════════
+
+1. COMPUTED, NOT HARDCODED
+   Every number in the PDF must be derived from user_data inputs.
+   Never hardcode values like "65 kg" or "2,139 kcal". 
+   Always compute: calculate_bmr(user.weight, user.height, user.age, user.gender)
+
+2. CONDITIONAL CONTENT
+   Every section must show/hide or change content based on user flags:
+   - Lactose intolerant → no dairy in meal plan, swap to coconut/almond
+   - Thyroid condition → add thyroid-specific notes to sleep + supplement sections
+   - Anxiety present → add breathwork + ashwagandha to relevant sections
+   - DNA uploaded → add DNA section, else show "Upload DNA to unlock" callout
+
+3. CHART QUALITY
+   All matplotlib charts must use the PAGE_BG background.
+   All text in charts must use NAVY color.
+   All primary data must use GOLD color.
+   Charts embedded as BytesIO PNG at 150 dpi.
+   No chart titles should be cut off (use tight_layout).
+
+4. TABLE QUALITY
+   All tables must use card_table() from base.py.
+   Header: NAVY background, WHITE text, Helvetica-Bold 9pt.
+   Rows: CREAM / CREAM_DARK alternating.
+   Grid: 0.3pt #CCCCCC lines.
+   Padding: 6pt top/bottom, 8pt left/right.
+
+5. PAGE FOOTER
+   Every page must have the navy footer stripe via on_page().
+   Left: GeneWell · genewell.in · educational purposes only
+   Center: page number in gold
+   Right: user name · order ID
+
+6. FILE NAMING
+   Output files named: {product_id}_{order_id}_{name_slug}.pdf
+   Example: brainy-blueprint_abi711y7v_brainy.pdf
+
+7. NO UNICODE SUBSCRIPTS
+   Never use ₀₁₂₃₄₅₆₇₈₉ or ⁰¹²³ in reportlab.
+   Use <sub> and <super> XML tags in Paragraph objects instead.
+
+8. INDIAN CONTEXT
+   All food items must be Indian names (dal, roti, sabzi, etc.)
+   All prices in ₹ (use Rs. in reportlab if ₹ renders as box)
+   All lab names must be Indian (Thyrocare, Dr. Lal PathLabs, Metropolis)
+   All supplement brands must be available in India
+
+═══════════════════════════════════════════════════════════════
+TESTING
+═══════════════════════════════════════════════════════════════
+
+Create test_generate.py with sample user_data for each product:
+
+BRAINY_TEST_USER = {
+    "name": "Brainy",
+    "age": 23,
+    "gender": "female",
+    "weight_kg": 65,
+    "height_cm": 160,
+    "location": "Mumbai",
+    "sleep_hours": 5.5,
+    "water_glasses": 5,
+    "meals_per_day": 2,
+    "wake_up_time": "6-8",
+    "tired_time": "afternoon",
+    "stress_level": "moderate",
+    "energy_levels": "low",
+    "mood_patterns": "anxiety",
+    "skin_concerns": "dryness",
+    "work_schedule": "shift-work",
+    "activity_level": "lightly-active",
+    "hunger_frequency": "3-4-hours",
+    "supplement_usage": "multivitamin",
+    "food_intolerances": "lactose",
+    "bloating_frequency": "sometimes",
+    "medical_conditions": "thyroid",
+    "exercise_preference": "strength",
+    "cravings": "salty-snacks",
+    "weight_goal": "gain-weight",
+    "dna_upload_status": "have-but-no-upload",
+    "eating_out_frequency": "3-5-times",
+    "order_id": "abi711y7v",
+    "generated_date": "Mar 19, 2026"
+}
+
+Run: python test_generate.py
+Expected: 4 PDFs generated in output/ directory, one per product.
+
+═══════════════════════════════════════════════════════════════
+START ORDER
+═══════════════════════════════════════════════════════════════
+
+Build in this exact order:
+1. requirements.txt
+2. utils/calculations.py  (no dependencies)
+3. utils/scoring.py       (imports calculations)
+4. utils/charts.py        (imports matplotlib only)
+5. generator/base.py      (imports colors, styles)
+6. generator/brainy.py    (imports all utils + base)
+7. generator/product2.py  (same pattern)
+8. generator/product3.py  (same pattern)
+9. generator/product4.py  (same pattern)
+10. generator/router.py   (imports all generators)
+11. main.py               (imports router)
+12. test_generate.py      (tests all 4 products)
+
+After building, run test_generate.py and confirm all 4 PDFs 
+generate without errors before declaring done.
