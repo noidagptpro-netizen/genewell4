@@ -20,6 +20,8 @@ import Download from "./pages/Download";
 import Checkout from "./pages/Checkout";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import AdminDashboard from "./pages/AdminDashboard";
+import Subscribe from "./pages/Subscribe";
+import AdminSubscriptionEditor from "./pages/AdminSubscriptionEditor";
 
 const queryClient = new QueryClient();
 
@@ -59,12 +61,14 @@ const App = () => (
           <Route path="/login" element={<Login />} />
           <Route path="/quiz" element={<Quiz />} />
           <Route path="/quiz-results" element={<QuizResults />} />
+          <Route path="/subscribe" element={<Subscribe />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="/download" element={<Download />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/about" element={<About />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/subscription-editor" element={<AdminSubscriptionEditor />} />
           <Route path="/demo" element={<Navigate to="/quiz" replace />} />
           <Route path="/reports" element={<Navigate to="/download" replace />} />
           <Route path="/premium" element={<Navigate to="/pricing" replace />} />

@@ -65,6 +65,20 @@ import {
 } from "./routes/admin";
 import { handleQuizCapture } from "./routes/quiz-capture";
 import { handleTrackVisitor } from "./routes/visitor-tracking";
+import {
+  getSubscriptionData,
+  savePlan,
+  updatePlan,
+  deletePlan,
+  createCheckout,
+  handleWebhook,
+  getSubscriberStatus,
+  cancelSubscription,
+  reactivateSubscription,
+  checkReportAccess,
+  getSubscribers,
+  publishChanges,
+} from "./routes/subscription";
 import narrativeRouter from "./routes/narrative";
 import { initializeDatabase } from "./lib/db";
 import { initializeEmailService } from "./lib/email-service";
@@ -167,6 +181,23 @@ export function createServer() {
   app.post("/api/admin/site-settings/bulk", requireAdmin, handleBulkUpdateSiteSettings);
 
   app.post("/api/track-visit", handleTrackVisitor);
+
+  // Subscription endpoints
+  app.get("/api/admin/subscription-data", requireAdmin, getSubscriptionData);
+  app.post("/api/admin/subscription-plans", requireAdmin, savePlan);
+  app.put("/api/admin/subscription-plans/:id", requireAdmin, updatePlan);
+  app.delete("/api/admin/subscription-plans/:id", requireAdmin, deletePlan);
+  app.post("/api/admin/subscription-features", requireAdmin, savePlan);
+  app.post("/api/admin/subscription-faqs", requireAdmin, savePlan);
+  app.post("/api/admin/subscription-addons", requireAdmin, savePlan);
+  app.post("/api/admin/subscription-publish", requireAdmin, publishChanges);
+  app.post("/api/subscription/checkout", createCheckout);
+  app.post("/api/subscription/webhook", handleWebhook);
+  app.get("/api/subscription/status", getSubscriberStatus);
+  app.post("/api/subscription/cancel", cancelSubscription);
+  app.post("/api/subscription/reactivate", reactivateSubscription);
+  app.get("/api/subscription/access", checkReportAccess);
+  app.get("/api/admin/subscribers", requireAdmin, getSubscribers);
 
   app.get("/api/data/summary", async (_req, res) => {
     try {
