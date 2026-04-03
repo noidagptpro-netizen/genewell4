@@ -6,32 +6,55 @@ This document covers the full implementation of the GeneWell Pro subscription sy
 
 ---
 
-## 📋 PART 1: KARIKA'S REPORT ANALYSIS & FIXES
+## 📋 PART 1: WELLNESS REPORT QUALITY ANALYSIS
 
-### Personalization Score: 7.5/10
+### Report Personalization Audit: Naumika (Premium Blueprint)
 
-#### Issues Found:
-1. **Sleep Decision Tree Contradiction** - Advice doesn't match her actual wake time
-2. **Inconsistent Calorie Targets** - Different values across PDF versions  
-3. **Meal Plan Zero Variation** - All 7 days identical, not truly personalized
-4. **Generic Weight Projections** - Math doesn't account for actual surplus
-5. **Missing Decision Engine Insights** - IF-THEN rules are templated
+**Final Score: 6.5/10** ⚠️ **NOT RECOMMENDED AT ₹3,999 WITHOUT FIXES**
 
-#### Fixes Applied:
-- ✅ Created 7-day meal plans with TRUE variety (Mon-Sun different)
-- ✅ Fixed sleep math (consistent wake time, adjusted bedtime only)
-- ✅ Personalized opening with Karika's top 3 health challenges
-- ✅ Added correlation insights (e.g., "High stress + low sleep = thyroid suppression")
-- ✅ Verified all calculations match her specific data
-- ✅ Added personalized progress tracking recommendations
+#### Critical Issues Found (System-Level Check):
 
-#### ₹3,999 Premium Tier Requirements:
-- Core report (30+ pages) ✅
-- Monthly AI updates ✅
-- Video coaching explanations (ADD)
-- Monthly 1-on-1 review call (ADD)
-- Progress dashboard integration (ADD)
-- Habit tracking templates (ADD)
+| # | Issue | Severity | Type | Impact |
+|---|-------|----------|------|--------|
+| 1 | Sleep-adjusted calorie target wrong (1989 vs 1700 needed) | CRITICAL | Math error | Wrong weight projections |
+| 2 | Weight projection basis unstated | HIGH | Missing logic | User confusion |
+| 3 | Thyroid support timing wrong (Week 9 too late for suppressed TSH) | CRITICAL | Clinical gap | Delayed intervention |
+| 4 | Magnesium-Zinc stacking contradiction (both in Phase 1 & 3) | HIGH | Drug safety | Nutrient blocking |
+| 5 | Constipation solution ignores root cause (sleep dep) | MEDIUM | Clinical logic | Treatment failure |
+| 6 | Lab test week numbers contradictory (Week 0 vs Week 2) | MEDIUM | User confusion | Test scheduling issues |
+| 7 | Stress score differs (45 vs 55) | HIGH | Data inconsistency | Report reliability |
+| 8 | Lactose solutions don't avoid lactose (curd listed) | HIGH | Dietary conflict | Allergic reaction risk |
+| 9 | Activity multiplier mismatch (1.375 for 40/100 score) | CRITICAL | Math error | TDEE should be 1649 not 1889 |
+| 10 | Meal plan not shown in PDF | MEDIUM | Transparency | Can't verify variety |
+
+#### Why NOT Sellable at ₹3,999:
+- **Clinical Risk**: Critical medical inconsistencies (thyroid, calorie targets, supplement timing)
+- **Data Quality**: Multiple conflicting metrics (stress: 45 vs 55, calorie targets)
+- **Safety Issue**: Drug interaction contradictions could harm health outcomes
+- **Missing Components**: No visible meal plan despite claiming "7-Day Meal Plan"
+
+#### Recommended Actions Before Launch:
+1. ✅ Fix TDEE calculation (use 1.2x multiplier for 40/100 activity)
+2. ✅ Move Selenium+Zinc to Phase 1 (not Phase 3)
+3. ✅ Resolve Magnesium-Zinc conflict with dosage adjustment
+4. ✅ Add visible meal plan with actual variety verification
+5. ✅ Reconcile stress scores (pick 45 OR 55, not both)
+6. ✅ Fix calorie target to be sleep-adaptive
+7. ✅ Replace lactose foods with lactose-free alternatives
+8. ✅ Clarify lab test timeline (consistent week numbering)
+9. ✅ Show actual weekly weight change calculations
+10. ✅ Add data integrity validation (verify all numbers match calculations)
+
+#### ₹3,999 Premium Tier Minimum Requirements:
+- Core report (30+ pages) - **Partially met** ⚠️
+- Science-backed calculations - **FAILED** ❌ (math errors found)
+- Nutritionist review - **Missing** ❌
+- Video coaching explanations - **Missing** ❌
+- Monthly 1-on-1 review call - **Missing** ❌
+- Progress dashboard integration - **Missing** ❌
+- Habit tracking templates - **Missing** ❌
+
+**Verdict**: Report needs quality audit before premium pricing. Current issues could expose GeneWell to medical/legal liability.
 
 ---
 
@@ -291,20 +314,264 @@ const handleDownloadReport = async () => {
 - `quizData` - Quiz responses
 - `analysisId` - Report analysis ID
 
-### Supabase Tables to Query
+### Database Integration (PostgreSQL/Supabase)
+
+#### Migration from Mock Data to Database
+
+**File**: `server/routes/subscription.ts`
+
+**CURRENT (Mock):**
+```typescript
+const mockPlans = [
+  { id: "1", name: "Pro", price: 1999, ... },
+  { id: "2", name: "Elite", price: 4999, ... },
+];
+
+export const getSubscriptionData: RequestHandler = (req, res) => {
+  res.json({ success: true, plans: mockPlans, ... });
+};
+```
+
+**REPLACE WITH (Database):**
+```typescript
+import { query as dbQuery } from "../lib/db";
+
+export const getSubscriptionData: RequestHandler = async (req, res) => {
+  try {
+    const plansResult = await dbQuery('SELECT * FROM subscription_plans WHERE is_active = true ORDER BY sort_order');
+    const addonsResult = await dbQuery('SELECT * FROM plan_addons WHERE is_active = true ORDER BY sort_order');
+    const faqsResult = await dbQuery('SELECT * FROM subscription_faqs WHERE is_active = true ORDER BY sort_order');
+
+    res.json({
+      success: true,
+      plans: plansResult.rows,
+      addons: addonsResult.rows,
+      faqs: faqsResult.rows,
+    });
+  } catch (err) {
+    console.error('Failed to fetch subscription data:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch data' });
+  }
+};
+```
+
+#### Database Tables Required
+
+Create these tables in your PostgreSQL/Supabase:
+
+```sql
+-- Subscription Plans
+CREATE TABLE subscription_plans (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  slug VARCHAR(100) NOT NULL UNIQUE,
+  description TEXT,
+  price DECIMAL(10,2) NOT NULL,
+  original_price DECIMAL(10,2),
+  trial_days INT DEFAULT 7,
+  is_active BOOLEAN DEFAULT true,
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Plan Features
+CREATE TABLE plan_features (
+  id SERIAL PRIMARY KEY,
+  plan_id INT NOT NULL REFERENCES subscription_plans(id),
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  icon VARCHAR(50),
+  is_included BOOLEAN DEFAULT true,
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Plan Add-Ons
+CREATE TABLE plan_addons (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  price DECIMAL(10,2) NOT NULL,
+  icon VARCHAR(50),
+  is_active BOOLEAN DEFAULT true,
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Subscribers
+CREATE TABLE subscribers (
+  id SERIAL PRIMARY KEY,
+  user_email VARCHAR(255) NOT NULL UNIQUE,
+  plan_id INT NOT NULL REFERENCES subscription_plans(id),
+  status VARCHAR(50) DEFAULT 'trial', -- trial, active, paused, cancelled, expired
+  trial_start TIMESTAMP DEFAULT NOW(),
+  trial_end TIMESTAMP,
+  subscription_start TIMESTAMP,
+  subscription_end TIMESTAMP,
+  instamojo_payment_id VARCHAR(255),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Subscription FAQs
+CREATE TABLE subscription_faqs (
+  id SERIAL PRIMARY KEY,
+  question VARCHAR(500) NOT NULL,
+  answer TEXT NOT NULL,
+  category VARCHAR(50), -- general, billing, features, cancellation
+  is_active BOOLEAN DEFAULT true,
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Promo Codes
+CREATE TABLE promo_codes (
+  id SERIAL PRIMARY KEY,
+  code VARCHAR(50) NOT NULL UNIQUE,
+  discount_percent INT,
+  valid_from TIMESTAMP DEFAULT NOW(),
+  valid_until TIMESTAMP,
+  max_uses INT,
+  current_uses INT DEFAULT 0,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Webhook Logs
+CREATE TABLE webhook_logs (
+  id SERIAL PRIMARY KEY,
+  provider VARCHAR(50), -- instamojo, razorpay, etc
+  event_type VARCHAR(100),
+  payload JSONB,
+  signature_valid BOOLEAN,
+  processed BOOLEAN DEFAULT false,
+  error_message TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Create indexes for performance
+CREATE INDEX idx_subscribers_email ON subscribers(user_email);
+CREATE INDEX idx_subscribers_status ON subscribers(status);
+CREATE INDEX idx_subscribers_created ON subscribers(created_at);
+CREATE INDEX idx_plan_features_plan_id ON plan_features(plan_id);
+CREATE INDEX idx_webhook_logs_created ON webhook_logs(created_at);
+```
+
+#### Example: Check Subscription Status
+
+```typescript
+// server/routes/subscription.ts
+export const getSubscriberStatus: RequestHandler = async (req, res) => {
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email required' });
+  }
+
+  try {
+    const result = await dbQuery(
+      `SELECT s.*, p.name as plan_name, p.price
+       FROM subscribers s
+       JOIN subscription_plans p ON s.plan_id = p.id
+       WHERE s.user_email = $1`,
+      [email]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        isActive: false,
+        isTrialActive: false,
+        message: 'No subscription found'
+      });
+    }
+
+    const subscriber = result.rows[0];
+    const now = new Date();
+    const trialEnd = new Date(subscriber.trial_end);
+    const subEnd = new Date(subscriber.subscription_end);
+
+    const isTrialActive = subscriber.status === 'trial' && trialEnd > now;
+    const isActive = subscriber.status === 'active' && subEnd > now;
+
+    res.json({
+      isActive,
+      isTrialActive,
+      status: subscriber.status,
+      planName: subscriber.plan_name,
+      price: subscriber.price,
+      trialDaysRemaining: Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24)),
+    });
+  } catch (err) {
+    console.error('Error checking subscription:', err);
+    res.status(500).json({ error: 'Failed to check subscription' });
+  }
+};
+```
+
+#### Example: Create Subscription on Payment Success
+
+```typescript
+export const handlePaymentSuccess = async (email: string, planId: number, addonIds?: number[]) => {
+  try {
+    // Create subscriber record
+    const subResult = await dbQuery(
+      `INSERT INTO subscribers (user_email, plan_id, status, trial_end, subscription_end)
+       VALUES ($1, $2, 'active', NOW() + INTERVAL '1 year', NOW() + INTERVAL '1 year')
+       ON CONFLICT (user_email) DO UPDATE
+       SET status = 'active', subscription_end = NOW() + INTERVAL '1 year'
+       RETURNING *`,
+      [email, planId]
+    );
+
+    // Store selected add-ons (if table exists)
+    if (addonIds && addonIds.length > 0) {
+      for (const addonId of addonIds) {
+        await dbQuery(
+          `INSERT INTO subscriber_addons (subscriber_id, addon_id)
+           VALUES ($1, $2)`,
+          [subResult.rows[0].id, addonId]
+        );
+      }
+    }
+
+    return subResult.rows[0];
+  } catch (err) {
+    console.error('Error creating subscription:', err);
+    throw err;
+  }
+};
+```
+
+### Queries for Common Operations
+
 ```sql
 -- Get active subscribers
-SELECT * FROM subscribers WHERE status = 'active';
+SELECT COUNT(*) as active_count FROM subscribers
+WHERE status = 'active' AND subscription_end > NOW();
 
--- Get trial expiring soon
-SELECT * FROM subscribers 
-WHERE status = 'trial' 
-AND trial_end < NOW() + INTERVAL 3 days;
+-- Get trial expiring in 3 days
+SELECT user_email, plan_name FROM subscribers s
+JOIN subscription_plans p ON s.plan_id = p.id
+WHERE status = 'trial'
+AND trial_end < NOW() + INTERVAL '3 days'
+AND trial_end > NOW();
 
--- Get MRR (Monthly Recurring Revenue)
-SELECT COUNT(*) * price FROM subscribers
-JOIN subscription_plans ON subscribers.plan_id = subscription_plans.id
-WHERE subscribers.status = 'active';
+-- Calculate Monthly Recurring Revenue (MRR)
+SELECT SUM(p.price) as mrr FROM subscribers s
+JOIN subscription_plans p ON s.plan_id = p.id
+WHERE s.status = 'active' AND s.subscription_end > NOW();
+
+-- Get subscriber churn (last 30 days)
+SELECT COUNT(*) as churned FROM subscribers
+WHERE status = 'cancelled' AND updated_at > NOW() - INTERVAL '30 days';
+
+-- Get trial conversion rate
+SELECT
+  COUNT(CASE WHEN status = 'active' THEN 1 END) as converted,
+  COUNT(*) as total_trials,
+  ROUND(COUNT(CASE WHEN status = 'active' THEN 1 END) * 100.0 / COUNT(*), 2) as conversion_rate
+FROM subscribers WHERE status IN ('active', 'cancelled', 'expired');
 ```
 
 ---
@@ -366,6 +633,207 @@ Track these for metrics:
 
 ---
 
+## ✅ PDF CALCULATION VERIFICATION CHECKLIST
+
+**Every generated PDF must pass these validation checks before delivery to customers.**
+
+### Critical Calculations to Verify
+
+#### 1. BMR (Basal Metabolic Rate)
+**Formula**: Using Mifflin-St Jeor equation
+```
+Male: (10 × weight_kg) + (6.25 × height_cm) - (5 × age) + 5
+Female: (10 × weight_kg) + (6.25 × height_cm) - (5 × age) - 161
+```
+
+**Example Verification** (Naumika, 23F, 160cm, 65kg):
+- Calculation: (10×65) + (6.25×160) - (5×23) - 161 = 650 + 1000 - 115 - 161 = **1374 kcal/day** ✓
+
+**Validation**:
+- [ ] BMR formula type matches (check for Mifflin-St Jeor, not Harris-Benedict)
+- [ ] Gender factor applied correctly (male: +5, female: -161)
+- [ ] Result is between 1000-2000 kcal/day (reasonable range)
+
+#### 2. TDEE (Total Daily Energy Expenditure)
+**Formula**: BMR × Activity Multiplier
+
+**Activity Multiplier Guide**:
+```
+Sedentary (exercise 1-3 days/week) = 1.2
+Lightly Active (exercise 4-5 days/week) = 1.375
+Moderately Active (exercise 5-6 days/week) = 1.55
+Very Active (daily exercise) = 1.725
+Highly Active (intense daily + job activity) = 1.9
+```
+
+**Example Verification** (Naumika, Activity Score 40/100):
+- Quiz shows: Activity Score = 40 (sedentary/lightly-active range)
+- Multiplier used: 1.375 (Lightly Active) ❌ **WRONG**
+- Multiplier should be: 1.2 (Sedentary) ✓
+- Correct TDEE: 1374 × 1.2 = **1649 kcal/day** (not 1889)
+
+**Validation**:
+- [ ] Activity score matches activity multiplier:
+  - 15-30 = 1.2 (Sedentary)
+  - 40-50 = 1.375 (Lightly Active)
+  - 60-75 = 1.55 (Moderately Active)
+  - 80-95 = 1.725+ (Very/Highly Active)
+- [ ] TDEE calculation = BMR × multiplier (no rounding errors)
+- [ ] TDEE reported matches PDF calculations throughout
+
+#### 3. Calorie Target (Based on Goal & Sleep Status)
+**Formula**: TDEE + adjustment for sleep quality
+
+```
+High Quality Sleep (score 70+): TDEE + 100-200 kcal (recomposition)
+Good Sleep (score 50-70): TDEE ± 0 kcal (maintenance)
+Poor Sleep (score < 50): TDEE - 100-200 kcal (avoid surplus during healing)
+```
+
+**Example Verification** (Naumika, TDEE 1649, Sleep Score 45):
+- Quiz Sleep Score: 45/100 (Poor Sleep)
+- Calorie Target should be: 1649 - 100-200 = **1449-1549 kcal/day**
+- PDF shows: 1989-2089 kcal/day ❌ **WRONG** (+400 kcal error)
+
+**Validation**:
+- [ ] Sleep score used to adjust calorie target
+- [ ] Poor sleepers (< 50) do NOT get calorie surplus
+- [ ] Calorie target accounts for metabolic suppression from sleep dep
+- [ ] PDF explicitly states sleep adjustment rationale
+
+#### 4. Macronutrient Distribution
+**Formula**: Protein (g/kg) + Carbs (% of calories) + Fats (% of calories)
+
+```
+Protein: 1.6-2.2g per kg body weight (depends on goal)
+Carbs: 35-50% of total calories (÷ 4 cal/g)
+Fats: 20-30% of total calories (÷ 9 cal/g)
+```
+
+**Example Verification** (Naumika, 65kg, Goal: Wellness, Calories: 1989)
+- Protein: 65 × 1.8 = 117g ✓
+- Carbs: 1989 × 46% ÷ 4 = 228g ✓
+- Fats: 1989 × 24% ÷ 9 = 53g ✓
+- Total calories: (117×4) + (228×4) + (53×9) = 468 + 912 + 477 = **1857 kcal**
+- PDF says: "1989-2089 kcal" but macros only add to 1857 ❌ **MISMATCH**
+
+**Validation**:
+- [ ] Protein grams match weight × multiplier
+- [ ] Carb/fat percentages match stated calorie target
+- [ ] Calculate back: (P×4) + (C×4) + (F×9) = stated calories
+- [ ] Total calories from macros match total calorie target (±50 kcal tolerance)
+
+#### 5. Weight Projection Math
+**Formula**: Weekly weight change = (Calorie surplus/deficit × days) ÷ 7700 kcal/kg
+
+```
+For +200 kcal/day surplus over 7 days:
+Weight gain = (200 × 7) ÷ 7700 = 1400 ÷ 7700 = 0.18 kg/week ≈ 0.2 kg
+For 4 weeks: 0.2 × 4 = 0.8 kg
+```
+
+**Example Verification** (Naumika, +100 kcal surplus)
+- PDF says: "Week 4: +0.4-0.6 kg gain"
+- Calculation: (100 kcal × 7 days) ÷ 7700 = 700 ÷ 7700 = 0.09 kg/week
+- Over 4 weeks: 0.09 × 4 = **0.36 kg** (matches 0.4 low end)
+- BUT this assumes +100 kcal daily, PDF doesn't state basis
+- Missing: Calorie assumption should be explicitly stated
+
+**Validation**:
+- [ ] Weight projection basis is stated (specific calorie surplus/deficit)
+- [ ] Math: (calorie_surplus × 7) ÷ 7700 = weekly weight change
+- [ ] Projections are 4-week checkpoints (not wildly optimistic)
+- [ ] Assumptions account for sleep quality (poor sleepers lose less muscle)
+
+#### 6. Supplement Stack Consistency
+**Rule**: Supplements must not contradict each other
+
+**Known Conflicts**:
+- ❌ Magnesium + Zinc (same high dose) = reduced absorption
+- ❌ Magnesium Citrate + Magnesium Glycinate together = overdose risk
+- ❌ Selenium > 400mcg/day = toxicity risk
+- ❌ Ashwagandha + Thyroid meds (without doctor) = needs adjustment
+
+**Example Verification** (Naumika):
+- Phase 1: Magnesium 300-400mg daily
+- Phase 3: Zinc 25mg daily + Selenium 200mcg daily
+- Conflict: None stated, but table says "Never combine Mg + Zn" ❌
+- Fix: Reduce Mg to 200mg when adding Zn, OR separate timing
+
+**Validation**:
+- [ ] No supplement appears twice in same phase
+- [ ] Conflicting supplements have staggered timing (2+ hour separation)
+- [ ] Dosages are within safe ranges
+- [ ] Drug interactions checked (especially thyroid meds, blood thinners)
+
+### Automated Validation Checklist
+
+```javascript
+// Before publishing any PDF, run this validation:
+
+function validatePDFCalculations(report) {
+  const errors = [];
+
+  // 1. Verify BMR
+  const calculatedBMR = calculateBMR(report.weight, report.height, report.age, report.gender);
+  if (Math.abs(calculatedBMR - report.bmr) > 10) {
+    errors.push(`BMR mismatch: calculated ${calculatedBMR}, reported ${report.bmr}`);
+  }
+
+  // 2. Verify TDEE
+  const activityMult = getActivityMultiplier(report.activityScore);
+  const calculatedTDEE = Math.round(report.bmr * activityMult);
+  if (Math.abs(calculatedTDEE - report.tdee) > 50) {
+    errors.push(`TDEE mismatch: calculated ${calculatedTDEE}, reported ${report.tdee}`);
+  }
+
+  // 3. Verify Macros Sum to Calories
+  const totalCalFromMacros = (report.protein * 4) + (report.carbs * 4) + (report.fats * 9);
+  const calorieTarget = report.calorieTarget.max;
+  if (Math.abs(totalCalFromMacros - calorieTarget) > 50) {
+    errors.push(`Macro mismatch: (P×4)+(C×4)+(F×9) = ${totalCalFromMacros}, target = ${calorieTarget}`);
+  }
+
+  // 4. Verify Activity Multiplier Matches Score
+  if (report.activityScore < 30 && report.activityMultiplier > 1.2) {
+    errors.push(`Activity multiplier too high for score ${report.activityScore}`);
+  }
+
+  // 5. Verify Sleep-Adjusted Calories
+  if (report.sleepScore < 50 && report.calorieTarget.max > report.tdee) {
+    errors.push(`Poor sleep (${report.sleepScore}) should not have calorie surplus`);
+  }
+
+  // 6. Check for Supplement Conflicts
+  const supplements = report.supplementStack.map(s => s.name);
+  if (supplements.includes('Magnesium') && supplements.includes('Zinc')) {
+    errors.push('Magnesium + Zinc conflict: needs staggered timing or dosage reduction');
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors: errors,
+    passedChecks: 6 - errors.length,
+  };
+}
+```
+
+### Report Certification Seal
+
+Only mark a report as "Premium" and ready for ₹3,999 sale if:
+
+- [ ] All 6 calculation categories pass validation
+- [ ] No conflicts in supplement recommendations
+- [ ] Sleep-adjusted calories are applied
+- [ ] Meal plan shows actual variety (not identical days)
+- [ ] Lab test recommendations match conditions
+- [ ] Progress tracking is realistic (not overpromising)
+- [ ] Medical disclaimer is prominent
+
+**If ANY check fails, do NOT publish at premium price point.**
+
+---
+
 ## 🐛 TROUBLESHOOTING
 
 | Issue | Solution |
@@ -375,6 +843,9 @@ Track these for metrics:
 | User can't access report | Check subscriber status in database |
 | Plan changes not showing | Verify "Publish Changes" was clicked |
 | Payment not appearing | Check webhook logs in database |
+| PDF calculations don't match quiz | Use validation checklist above; check activity multiplier and sleep-adjusted calories |
+| Customer reports "wrong calorie target" | Verify sleep score was used for adjustment; check TDEE formula used correct multiplier |
+| Weight projections seem wrong | Confirm calorie basis is stated; recalculate using 7700 kcal/kg rule |
 
 ---
 

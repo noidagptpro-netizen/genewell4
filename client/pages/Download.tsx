@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import LegalFooter from "@/components/LegalFooter";
+import UpgradeModal from "@/components/UpgradeModal";
 import {
   getProductByPlanId,
   getAddOnById,
@@ -59,6 +60,12 @@ export default function Download() {
   const [selectedLanguage, setSelectedLanguage] = useState<"en" | "hi">(getLanguage());
   const [pdfGeneratedInLanguage, setPdfGeneratedInLanguage] = useState<"en" | "hi" | null>(null);
   const [configReady, setConfigReady] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<{
+    active: boolean;
+    trialDaysRemaining: number;
+  } | null>(null);
 
   const quizData = JSON.parse(localStorage.getItem("quizData") || "{}");
   const analysisId = localStorage.getItem("analysisId");
@@ -87,6 +94,37 @@ export default function Download() {
       setConfigReady(true);
     }
   }, [location.state, analysisId]);
+
+  // Check subscription status on mount
+  useEffect(() => {
+    const checkSubscription = async () => {
+      try {
+        const userEmail = quizData?.userEmail;
+        if (!userEmail) {
+          // No email means no subscription
+          setIsSubscribed(false);
+          return;
+        }
+
+        const response = await fetch(`/api/subscription/status?email=${encodeURIComponent(userEmail)}`);
+        if (response.ok) {
+          const data = await response.json();
+          setIsSubscribed(data.isActive || data.isTrialActive);
+          setSubscriptionStatus({
+            active: data.isActive || data.isTrialActive,
+            trialDaysRemaining: data.trialDaysRemaining || 0,
+          });
+        } else {
+          setIsSubscribed(false);
+        }
+      } catch (err) {
+        console.error("Failed to check subscription status:", err);
+        setIsSubscribed(false);
+      }
+    };
+
+    checkSubscription();
+  }, [quizData?.userEmail]);
 
   const generatePDF = async (config: PlanConfiguration) => {
     setIsLoading(true);
@@ -310,6 +348,12 @@ export default function Download() {
   };
 
   const handleDownload = async () => {
+    // Check subscription before allowing download
+    if (isSubscribed === false) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
     if (!pdfData) return;
 
     setIsDownloading(true);
@@ -338,6 +382,12 @@ export default function Download() {
   };
 
   const handleViewInline = async () => {
+    // Check subscription before allowing view
+    if (isSubscribed === false) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
     if (!pdfData) return;
 
     try {
@@ -454,6 +504,14 @@ export default function Download() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col">
+      {/* Upgrade Modal for Non-Subscribers */}
+      <UpgradeModal
+        isOpen={showUpgradeModal && isSubscribed === false}
+        onClose={() => setShowUpgradeModal(false)}
+        reportTitle="Your Wellness Blueprint"
+        remainingDays={subscriptionStatus?.trialDaysRemaining || 0}
+      />
+
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
