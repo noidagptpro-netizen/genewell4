@@ -251,16 +251,28 @@ export default function Subscribe() {
   const totalPrice = discountedPrice + addonPrice;
 
   const handleStartTrial = () => {
+    // Store plan data
     localStorage.setItem("selectedPlan", JSON.stringify({
-      plan_id: plan.id,
-      plan_name: plan.name,
+      planId: plan.id,
+      planName: plan.name,
       price: basePrice,
-      discounted_price: discountedPrice,
-      addons: selectedAddons,
-      addon_price: addonPrice,
-      total: totalPrice,
-      trial_days: plan.trial_days,
+      discountedPrice: discountedPrice,
+      totalPrice: totalPrice,
+      trialDays: plan.trial_days,
     }));
+
+    // Store add-ons separately for checkout page
+    const addonDetails = selectedAddons
+      .map((addonId) => {
+        const addon = addOnProducts.find((a) => a.id === addonId);
+        return {
+          id: addonId,
+          name: addon?.name || "Add-on",
+          price: addon?.price || 0,
+        };
+      });
+    localStorage.setItem("selectedAddons", JSON.stringify(addonDetails));
+
     navigate("/checkout");
   };
 

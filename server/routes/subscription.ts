@@ -279,12 +279,12 @@ export const handleWebhook: RequestHandler = async (req, res) => {
 
 // Get subscriber status
 export const getSubscriberStatus: RequestHandler = async (req, res) => {
-  const { user_id } = req.query;
+  const { email } = req.query;
 
-  if (!user_id) {
+  if (!email) {
     return res
       .status(400)
-      .json({ success: false, error: "user_id required" });
+      .json({ success: false, error: "email query parameter required" });
   }
 
   try {
@@ -292,22 +292,37 @@ export const getSubscriberStatus: RequestHandler = async (req, res) => {
     // const { data } = await supabase
     //   .from('subscribers')
     //   .select('*')
-    //   .eq('user_id', user_id)
+    //   .eq('user_email', email)
     //   .single()
 
-    // Mock response
+    // Mock response - returns trial access by default for testing
+    const now = new Date();
+    const trialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+    const daysRemaining = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
     const mockSubscriber = {
-      id: "123",
-      user_id,
-      plan: "pro",
-      status: "active", // active, trial, cancelled
-      subscription_start: new Date(),
-      trial_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      can_access_report: true,
-      days_remaining: 5,
+      id: `sub_${Math.random().toString(36).substr(2, 9)}`,
+      user_email: email,
+      plan_id: 1,
+      plan_name: "Pro",
+      status: "trial", // trial, active, paused, cancelled, expired
+      trial_start: now,
+      trial_end: trialEnd,
+      subscription_start: null,
+      subscription_end: null,
+      isActive: false,
+      isTrialActive: true,
+      trialDaysRemaining: daysRemaining,
     };
 
-    res.json({ success: true, subscriber: mockSubscriber });
+    res.json({
+      success: true,
+      isActive: mockSubscriber.isActive,
+      isTrialActive: mockSubscriber.isTrialActive,
+      status: mockSubscriber.status,
+      trialDaysRemaining: mockSubscriber.trialDaysRemaining,
+      planName: mockSubscriber.plan_name,
+    });
   } catch (error: any) {
     res
       .status(500)
@@ -379,10 +394,16 @@ export const reactivateSubscription: RequestHandler = async (req, res) => {
 
 // Check if user can access report
 export const checkReportAccess: RequestHandler = async (req, res) => {
-  const { user_id } = req.query;
+  const { email } = req.query;
 
-  if (!user_id) {
-    return res.status(400).json({ success: false, error: "user_id required" });
+  if (!email) {
+    // No email provided - no access
+    return res.json({
+      success: true,
+      hasAccess: false,
+      status: "no_email",
+      message: "Email required to check report access",
+    });
   }
 
   try {
@@ -390,26 +411,29 @@ export const checkReportAccess: RequestHandler = async (req, res) => {
     // const { data: subscriber } = await supabase
     //   .from('subscribers')
     //   .select('*')
-    //   .eq('user_id', user_id)
+    //   .eq('user_email', email)
     //   .single()
 
-    // Mock response
-    const hasAccess = true; // Should check actual status
-    const status = "active"; // active, trial, cancelled, expired
+    // Mock response - allow trial users and active subscribers
+    const now = new Date();
+    const trialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const isTrialActive = trialEnd > now;
+    const hasAccess = isTrialActive; // Allow trial access
 
     res.json({
       success: true,
-      has_access: hasAccess,
-      status,
+      hasAccess,
+      isTrialActive,
+      status: isTrialActive ? "trial" : "expired",
       message: hasAccess
-        ? "User has report access"
-        : "User needs to subscribe",
+        ? "User has report access (trial)"
+        : "Trial expired - user needs to subscribe",
     });
   } catch (error: any) {
     // Assume no access on error
     res.json({
       success: true,
-      has_access: false,
+      hasAccess: false,
       status: "unknown",
       message: "User needs to subscribe to access reports",
     });

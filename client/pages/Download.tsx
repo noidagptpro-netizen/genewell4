@@ -99,9 +99,25 @@ export default function Download() {
   useEffect(() => {
     const checkSubscription = async () => {
       try {
-        const userEmail = quizData?.userEmail;
+        // Try to get email from quiz data
+        let userEmail = quizData?.userEmail;
+
+        // Fallback: try to extract from localStorage
         if (!userEmail) {
-          // No email means no subscription
+          const quizDataStr = localStorage.getItem("quizData");
+          if (quizDataStr) {
+            try {
+              const parsed = JSON.parse(quizDataStr);
+              userEmail = parsed.userEmail || parsed.email;
+            } catch (e) {
+              console.error("Failed to parse quiz data from localStorage:", e);
+            }
+          }
+        }
+
+        if (!userEmail) {
+          // No email means no subscription to check - show upgrade modal
+          console.log("No email found, assuming non-subscriber");
           setIsSubscribed(false);
           return;
         }
@@ -109,12 +125,16 @@ export default function Download() {
         const response = await fetch(`/api/subscription/status?email=${encodeURIComponent(userEmail)}`);
         if (response.ok) {
           const data = await response.json();
-          setIsSubscribed(data.isActive || data.isTrialActive);
+          const hasAccess = data.isActive || data.isTrialActive;
+          setIsSubscribed(hasAccess);
           setSubscriptionStatus({
             active: data.isActive || data.isTrialActive,
             trialDaysRemaining: data.trialDaysRemaining || 0,
           });
+          console.log("Subscription status checked:", { email: userEmail, hasAccess, status: data.status });
         } else {
+          // API error - assume no subscription
+          console.warn("Subscription status check failed with status:", response.status);
           setIsSubscribed(false);
         }
       } catch (err) {
