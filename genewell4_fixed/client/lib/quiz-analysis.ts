@@ -262,13 +262,16 @@ function generateInsights(profile: any, quizData: any): PersonalizationData["ins
         : "good sleep quality. Continue your current sleep schedule and environment—consistency is key. 7-9 hours nightly supports all other health interventions."
     }`,
 
-    stressStrategy: `Stress neuroscience shows elevated cortisol impairs sleep, immunity, and body composition. Your stress score of ${profile.stressScore}/100 suggests ${
-      profile.stressScore > 70
-        ? "high chronic stress activation. Daily evidence-based tools: Box breathing (4-4-4-4, 5 rounds) activates parasympathetic tone in 5 min. 20-30 min moderate-intensity movement (walking, cycling) reduces cortisol comparable to anti-anxiety medication. Magnesium glycinate (300-400mg) and omega-3 (2-3g EPA/DHA) support nervous system regulation."
-        : profile.stressScore > 50
-        ? "moderate stress. Incorporate 15-20 min daily of stress-reduction: walking, meditation, or breathing exercises. Consistent sleep and movement are powerful stress buffers."
-        : "low stress levels. Maintain current healthy practices—consistent sleep, regular movement, and social connection are proven stress resilience factors."
-    }`,
+    stressStrategy: (() => {
+      const mgmtScore = Math.max(15, 100 - profile.stressScore);
+      return `Stress neuroscience shows elevated cortisol impairs sleep, immunity, and body composition. Your stress management score of ${mgmtScore}/100 suggests ${
+        mgmtScore < 30
+          ? "high chronic stress activation. Daily evidence-based tools: Box breathing (4-4-4-4, 5 rounds) activates parasympathetic tone in 5 min. 20-30 min moderate-intensity movement (walking, cycling) reduces cortisol comparable to anti-anxiety medication. Magnesium glycinate (300-400mg) and omega-3 (2-3g EPA/DHA) support nervous system regulation."
+          : mgmtScore < 50
+          ? "moderate stress. Incorporate 15-20 min daily of stress-reduction: walking, meditation, or breathing exercises. Consistent sleep and movement are powerful stress buffers."
+          : "manageable stress levels. Maintain current healthy practices—consistent sleep, regular movement, and social connection are proven stress resilience factors."
+      }`;
+    })(),
   };
 }
 

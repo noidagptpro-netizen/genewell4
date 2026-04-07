@@ -45,6 +45,7 @@ export interface WellnessUserProfile {
   moodPatterns?: string[];
   cravings?: string[];
   hungerFrequency?: string;
+  activityLevel?: string;
 }
 
 export interface RuleEngineOutput {

@@ -1471,7 +1471,7 @@ function renderMetabolicCalculations(ctx: PDFContext, bundle: PDFDataBundle, lan
           "very-active":       {mult:"1.725", label:"Very Active"},
           "highly-active":     {mult:"1.9",   label:"Highly Active"},
         };
-        const act = actMap[(profile as any).activityLevel || ""] || {mult:(tdee/bmr).toFixed(3), label:"Active"};
+        const act = actMap[profile.activityLevel || ""] || actMap[Object.keys(actMap).find(k => actMap[k].mult === (tdee/bmr).toFixed(3)) || ""] || {mult:(tdee/bmr).toFixed(3), label:"Lightly Active"};
         return l(
           `BMR × ${act.mult} (${act.label}) = ${bmr} × ${act.mult} = ${tdee} kcal/day`,
           `BMR × ${act.mult} (${act.label}) = ${bmr} × ${act.mult} = ${tdee} kcal/दिन`
@@ -2041,7 +2041,7 @@ function renderMetabolicProfile(ctx: PDFContext, bundle: PDFDataBundle, language
           "very-active": "Very Active",
           "highly-active": "Highly Active",
         };
-        const actLabel = actLabelMap[(profile as any).activityLevel || ""] || "Lightly Active";
+        const actLabel = actLabelMap[profile.activityLevel || ""] || "Lightly Active";
         return l(`BMR × ${(tdee / bmr).toFixed(3)} (${actLabel}) = ${bmr} × ${(tdee / bmr).toFixed(3)} = ${tdee} kcal/day`, `BMR × ${(tdee / bmr).toFixed(3)} (${actLabel}) = ${bmr} × ${(tdee / bmr).toFixed(3)} = ${tdee} kcal/दिन`);
       })(),
       note: l("Total calories you burn on a typical day. Eat below this for fat loss.", "एक सामान्य दिन में आप जितनी कैलोरी जलाते हैं।"),
@@ -2282,6 +2282,24 @@ function renderMealPlan(ctx: PDFContext, bundle: PDFDataBundle, language: "en" |
   const l = (en: string, hi: string) => language === "hi" ? hi : en;
 
   addHeaderSection(ctx, l("06 · 7-Day Meal Plan + Eating Out Guide", "06 · 7-दिन की भोजन योजना"), l(`${profile.dietaryPreference || "Balanced"} · ~${profile.tdee} kcal · Indian context`, `${profile.dietaryPreference || "संतुलित"} · ~${profile.tdee} kcal · भारतीय संदर्भ`));
+
+  const hasGlutenIntolerance = (profile.foodIntolerances || []).some((f: string) => /gluten|wheat/i.test(f));
+  if (hasGlutenIntolerance) {
+    checkPageBreak(ctx, 18);
+    ctx.pdf.setFillColor(255, 243, 205);
+    ctx.pdf.rect(ctx.margin, ctx.yPosition, ctx.contentWidth, 16, "F");
+    ctx.pdf.setFillColor(255, 193, 7);
+    ctx.pdf.rect(ctx.margin, ctx.yPosition, 3, 16, "F");
+    ctx.pdf.setTextColor(120, 70, 0);
+    setCtxFont(ctx, "bold");
+    ctx.pdf.setFontSize(8.5);
+    ctx.pdf.text(l("⚠ Gluten Intolerance Alert", "⚠ ग्लूटन असहिष्णुता चेतावनी"), ctx.margin + 6, ctx.yPosition + 6);
+    setCtxFont(ctx, "normal");
+    ctx.pdf.setFontSize(8);
+    ctx.pdf.text(l("Swap all wheat-based items (roti, atta, maida, bread) with rice, ragi, jowar, bajra, or quinoa. Check labels on packaged oats.", "सभी गेहूं आधारित चीज़ें (रोटी, आटा, मैदा, ब्रेड) को चावल, रागी, ज्वार, बाजरा या क्विनोआ से बदलें।"), ctx.margin + 6, ctx.yPosition + 12);
+    ctx.yPosition += 20;
+    ctx.pdf.setTextColor(...DARK);
+  }
 
   const renderMealItems = (label: string, items: MealItem[]) => {
     if (!items?.length) return;
@@ -2988,6 +3006,30 @@ function renderDigestiveHealth(ctx: PDFContext, bundle: PDFDataBundle, language:
     ],
     [30, 55, 52, 43]
   );
+
+  const hasGlutenGut = (profile.foodIntolerances || []).some((f: string) => /gluten|wheat/i.test(f));
+  if (hasGlutenGut) {
+    addSpacing(ctx, 2);
+    checkPageBreak(ctx, 18);
+    ctx.pdf.setFillColor(255, 243, 205);
+    ctx.pdf.rect(ctx.margin, ctx.yPosition, ctx.contentWidth, 20, "F");
+    ctx.pdf.setFillColor(255, 152, 0);
+    ctx.pdf.rect(ctx.margin, ctx.yPosition, 3, 20, "F");
+    ctx.pdf.setTextColor(120, 70, 0);
+    setCtxFont(ctx, "bold");
+    ctx.pdf.setFontSize(8.5);
+    ctx.pdf.text(l("⚠ Gluten Intolerance — Gut Protocol Modification", "⚠ ग्लूटन असहिष्णुता — आंत प्रोटोकॉल संशोधन"), ctx.margin + 6, ctx.yPosition + 6);
+    setCtxFont(ctx, "normal");
+    ctx.pdf.setFontSize(8);
+    const glutenGutNote = l(
+      "Week 3-4 gut protocol lists idli/dosa & oats — these contain gluten risk. Replace with: rice idli (using only rice + urad dal, confirmed gluten-free), rice-based kanji, and certified gluten-free oats. Avoid atta-based dosa or chapati during gut healing phase.",
+      "सप्ताह 3-4 में इडली/दोसा और ओट्स हैं — ये ग्लूटन जोखिम वाले हो सकते हैं। इन्हें बदलें: चावल इडली (केवल चावल + उड़द दाल), चावल कांजी, और प्रमाणित ग्लूटन-मुक्त ओट्स से। आटा-आधारित दोसा या चपाती से बचें।"
+    );
+    const glutenLines = ctx.pdf.splitTextToSize(glutenGutNote, ctx.contentWidth - 12);
+    glutenLines.forEach((line: string, i: number) => ctx.pdf.text(line, ctx.margin + 6, ctx.yPosition + 12 + i * 4));
+    ctx.yPosition += 12 + glutenLines.length * 4 + 4;
+    ctx.pdf.setTextColor(...DARK);
+  }
 
   addSpacing(ctx, 3);
   addSubSection(ctx, l("Your Condition-Specific Fixes", "आपकी स्थिति-विशेष सुधार"));
@@ -4292,6 +4334,7 @@ function convertLegacyToBundle(data: PersonalizationData, options: PDFGeneration
     eatingOutFrequency: (profile as any).eatingOutFrequency || "occasionally",
     cravings: (profile as any).cravings || [],
     moodPatterns: (profile as any).moodPatterns || [],
+    activityLevel: (profile as any).activityLevel || "",
   };
 
   const hasDigestive = profile.digestiveIssues?.length > 0;
