@@ -80,6 +80,12 @@ import {
   publishChanges,
 } from "./routes/subscription";
 import narrativeRouter from "./routes/narrative";
+import {
+  handleGenerateWellnessReport,
+  handleValidateReportInput,
+  handleReportDiagnostics,
+  handleBatchReportGeneration,
+} from "./routes/report";
 import { initializeDatabase } from "./lib/db";
 import { initializeEmailService } from "./lib/email-service";
 import { startCleanupJob } from "./lib/storage";
@@ -198,6 +204,12 @@ export function createServer() {
   app.post("/api/subscription/reactivate", reactivateSubscription);
   app.get("/api/subscription/access", checkReportAccess);
   app.get("/api/admin/subscribers", requireAdmin, getSubscribers);
+
+  // Report generation endpoints (deterministic computation + validation)
+  app.post("/api/report/generate", handleGenerateWellnessReport);
+  app.post("/api/report/validate/:email", handleValidateReportInput);
+  app.post("/api/report/diagnose", handleReportDiagnostics);
+  app.post("/api/report/batch", handleBatchReportGeneration);
 
   app.get("/api/data/summary", async (_req, res) => {
     try {

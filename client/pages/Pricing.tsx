@@ -73,7 +73,7 @@ export default function Pricing() {
       .then(data => {
         if (data.success && data.products?.length > 0) {
           const apiPlans = data.products
-            .filter((p: any) => p.visible)
+            .filter((p: any) => p.visible && p.name !== "All Access")
             .sort((a: any, b: any) => a.sort_order - b.sort_order)
             .map((p: any) => {
               const base = defaultPlans.find(d => d.planId === p.plan_id);
